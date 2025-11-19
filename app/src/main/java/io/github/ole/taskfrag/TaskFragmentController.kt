@@ -24,7 +24,7 @@ class TaskFragmentController(
     private val onCreateCallback: FragmentInfoCallback,
     private val onInfoChangedCallback: FragmentInfoCallback,
     private val goneCallback: FragmentGoneCallback,
-    private val executor: Executor,
+    executor: Executor
 ) {
     private val fragmentToken = Binder()
     private var fragmentInfo: TaskFragmentInfo? = null
@@ -117,10 +117,6 @@ class TaskFragmentController(
             TaskFragmentOrganizer.TASK_FRAGMENT_TRANSIT_OPEN,
             false,
         )
-    }
-
-    fun isFragmentCreated(): Boolean {
-        return fragmentInfo != null
     }
 
     fun isFragmentEmpty(): Boolean {

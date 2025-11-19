@@ -16,20 +16,12 @@ public class TaskOverlayController {
     private static final String TAG = "TaskOverlayController";
     private final Context mContext;
     private final AtomicInteger mConnectionCount = new AtomicInteger(0);
-    private Supplier<Boolean> mBackHandler;
     private Consumer<Integer> mScrollHandler;
 
     private boolean mBound;
     private ITaskOverlay mTaskOverlay;
 
     private final ITaskOverlayCallback mOverlayCallback = new ITaskOverlayCallback.Stub() {
-        @Override
-        public void onOverlayBackPressed() {
-            if (mBackHandler != null) {
-                Log.i(TAG, "Handled back: " + mBackHandler.get());
-            }
-        }
-
         @Override
         public void onOverlayScrolled(int scrollX) {
             if (mScrollHandler != null) {
@@ -116,10 +108,6 @@ public class TaskOverlayController {
     private void unbindTaskOverlay() {
         mContext.unbindService(mConnection);
         mBound = false;
-    }
-
-    public void setBackHandler(Supplier<Boolean> handler) {
-        mBackHandler = handler;
     }
 
     public void setScrollHandler(Consumer<Integer> handler) {

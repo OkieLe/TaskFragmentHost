@@ -17,11 +17,6 @@ interface ITaskHost {
     oneway void unregisterHostCallback(ITaskHostCallback host);
 
     /**
-     * User presses the back button in task, this should be handled by host
-     */
-    oneway void onOverlayBackPressed();
-
-    /**
      * User scrolls the task overlay out
      * @param scrollX the x position of the scroll
      */

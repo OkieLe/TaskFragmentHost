@@ -90,19 +90,6 @@ public class TaskChannelService extends Service {
         }
 
         @Override
-        public void onOverlayBackPressed() {
-            if (mTaskOverlayCallback != null) {
-                try {
-                    mTaskOverlayCallback.onOverlayBackPressed();
-                } catch (RemoteException e) {
-                    throw new IllegalStateException("Task host failed to handle back");
-                }
-            } else {
-                throw new IllegalStateException("No task host to handle back");
-            }
-        }
-
-        @Override
         public void onOverlayScrolled(int scrollX) {
             if (mTaskOverlayCallback != null) {
                 try {

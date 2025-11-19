@@ -104,20 +104,6 @@ public class TaskHostController {
         mBound = false;
     }
 
-    public boolean onBackPressed() {
-        if (mTaskHost != null && mInputInterceptable) {
-            try {
-                mTaskHost.onOverlayBackPressed();
-                return true;
-            } catch (RemoteException e) {
-                Log.e(TAG, "Failed to send back press", e);
-                return false;
-            }
-        } else {
-            return false;
-        }
-    }
-
     public void onScrolled(int scrollX) {
         if (mTaskHost != null && mInputInterceptable) {
             try {

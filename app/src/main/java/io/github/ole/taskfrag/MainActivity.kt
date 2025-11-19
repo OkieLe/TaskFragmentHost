@@ -7,6 +7,8 @@ import android.os.Bundle
 import android.util.Log
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
+import android.window.TaskFragmentInfo
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.animation.addListener
@@ -23,6 +25,13 @@ class MainActivity : AppCompatActivity() {
     }
     private val taskOverlayController by lazy { TaskOverlayController.get(this) }
     private lateinit var taskFragmentController: TaskFragmentController
+
+    private val onBackPressedCallback = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            Log.d(TAG, "handleOnBackPressed")
+            moveTaskToBack(true)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,18 +55,21 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         )
+        onBackPressedDispatcher.addCallback(onBackPressedCallback)
         taskFragmentController = TaskFragmentController(
             this,
-            { _ ->
-                startSideActivity()
+            { fragmentInfo ->
+                logTaskFragmentState(fragmentInfo)
+            },
+            { fragmentInfo ->
+                logTaskFragmentState(fragmentInfo)
             },
             {
+                Log.i(TAG, "onTaskFragmentGone")
             },
-            {},
             mainExecutor
         ).apply { createTaskFragment() }
         taskOverlayController.start()
-        taskOverlayController.setBackHandler { handleBackPressed() }
         taskOverlayController.setScrollHandler {  }
     }
 
@@ -111,6 +123,11 @@ class MainActivity : AppCompatActivity() {
         animator.start()
     }
 
+    private fun startSideActivity() {
+        taskFragmentController.startActivityInTaskFragment(
+            Intent(this, SideActivity::class.java))
+    }
+
     private fun beforeShowTaskFragment() {
         if (!taskFragmentController.isFragmentOnTop()) {
             taskFragmentController.reorderToTop()
@@ -124,17 +141,15 @@ class MainActivity : AppCompatActivity() {
         taskFragmentController.reorderToBottom()
     }
 
-    private fun handleBackPressed(): Boolean {
-        return true
-    }
-
-    private fun startSideActivity() {
-        taskFragmentController.startActivityInTaskFragment(
-            Intent(this, SideActivity::class.java))
+    private fun logTaskFragmentState(info: TaskFragmentInfo) {
+        Log.i(TAG, "TaskFragment: vis=${info.isVisible}, top=${info.isTopNonFinishingChild}," +
+                " empty=${info.isEmpty}, actCnt=${info.runningActivityCount}")
     }
 
     override fun onDestroy() {
         taskOverlayController.stop()
+        onBackPressedCallback.remove()
+        taskFragmentController.destroy()
         super.onDestroy()
     }
 }
