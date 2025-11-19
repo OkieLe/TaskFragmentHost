@@ -22,6 +22,17 @@
         </activity>
         <activity android:name=".SideActivity" />
         <activity android:name=".OverSideActivity" />
+        <service
+            android:name=".TaskChannelService"
+            android:exported="true"
+            tools:ignore="ExportedService">
+            <intent-filter>
+                <action android:name="io.github.ole.taskfrag.action.GET_HOST" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="io.github.ole.taskfrag.action.GET_OVERLAY" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>
