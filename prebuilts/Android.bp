@@ -1,0 +1,29 @@
+android_app {
+    name: "TaskLauncher",
+    srcs: [
+        "src/main/aidl/**/*.aidl",
+        "src/main/java/**/*.java",
+        "src/main/java/**/*.kt",
+    ],
+    aidl: {
+        local_include_dirs: [
+            "src/main/aidl",
+        ],
+    },
+    resource_dirs: ["src/main/res"],
+    manifest : "src/main/AndroidManifest.xml",
+    platform_apis: true,
+    privileged: true,
+    certificate: "platform",
+    optimize : {
+        enabled : false,
+    },
+    dex_preopt : {
+        enabled : false
+    },
+    static_libs : [
+        "androidx.core_core-ktx",
+        "androidx.appcompat_appcompat",
+        "com.google.android.material_material",
+    ]
+}
