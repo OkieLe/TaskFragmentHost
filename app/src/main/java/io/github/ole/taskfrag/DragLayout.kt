@@ -1,5 +1,6 @@
 package io.github.ole.taskfrag
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.util.AttributeSet
 import android.view.MotionEvent
@@ -26,8 +27,9 @@ class DragLayout @JvmOverloads constructor(
 
         /**
          * End of the drag
+         * @param endDistancePx the end distance in pixels
          */
-        fun onHorizontalDragEnd()
+        fun onHorizontalDragEnd(endDistancePx: Int)
     }
 
     private var listener: OnHorizontalDragListener? = null
@@ -68,6 +70,7 @@ class DragLayout @JvmOverloads constructor(
         return super.onInterceptTouchEvent(ev)
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(ev: MotionEvent): Boolean {
         when (ev.actionMasked) {
             MotionEvent.ACTION_MOVE -> {
@@ -80,9 +83,9 @@ class DragLayout @JvmOverloads constructor(
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 // reset the state
+                listener?.onHorizontalDragEnd(accumulatedX)
                 accumulatedX = 0
                 dragging = false
-                listener?.onHorizontalDragEnd()
             }
         }
         return dragging || super.onTouchEvent(ev)
