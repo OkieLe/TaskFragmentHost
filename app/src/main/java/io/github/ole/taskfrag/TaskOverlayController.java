@@ -9,24 +9,31 @@ import android.os.RemoteException;
 import android.util.Log;
 
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 public class TaskOverlayController {
+    public interface ScrollHandler {
+        /**
+         * Called when the overlay has scrolled.
+         *
+         * @param scrollX The current scrollX of the overlay.
+         * @param scrolling Whether the overlay is currently scrolling.
+         */
+        void onScrolled(int scrollX, boolean scrolling);
+    }
     private static final String TAG = "TaskOverlayController";
     private final Context mContext;
     private final AtomicInteger mConnectionCount = new AtomicInteger(0);
-    private Consumer<Integer> mScrollHandler;
+    private ScrollHandler mScrollHandler;
 
     private boolean mBound;
+    private boolean mInputInterceptable = false;
     private ITaskOverlay mTaskOverlay;
 
     private final ITaskOverlayCallback mOverlayCallback = new ITaskOverlayCallback.Stub() {
         @Override
-        public void onOverlayScrolled(int scrollX) {
+        public void onOverlayScrolled(int scrollX, boolean scrolling) {
             if (mScrollHandler != null) {
-                Log.i(TAG, "Handled scrollX: " + scrollX);
-                mScrollHandler.accept(scrollX);
+                mScrollHandler.onScrolled(scrollX, scrolling);
             }
         }
     };
@@ -44,6 +51,7 @@ public class TaskOverlayController {
             if (mTaskOverlay == null) {
                 return;
             }
+            Log.d(TAG, "ITaskOverlay connected");
             try {
                 mTaskOverlay.asBinder().linkToDeath(mDeathRecipient, 0);
             } catch (RemoteException e) {
@@ -62,6 +70,7 @@ public class TaskOverlayController {
             if (mTaskOverlay == null) {
                 return;
             }
+            Log.d(TAG, "ITaskOverlay disconnected");
             try {
                 mTaskOverlay.unregisterOverlayCallback(mOverlayCallback);
             } catch (RemoteException e) {
@@ -110,11 +119,18 @@ public class TaskOverlayController {
         mBound = false;
     }
 
-    public void setScrollHandler(Consumer<Integer> handler) {
+    public void setScrollHandler(ScrollHandler handler) {
         mScrollHandler = handler;
     }
 
     public void setInputInterceptable(boolean enabled) {
+        if (mInputInterceptable == enabled) {
+            return;
+        }
+        mInputInterceptable = enabled;
+        if (mTaskOverlay == null) {
+            return;
+        }
         try {
             mTaskOverlay.setInputInterceptable(enabled);
         } catch (RemoteException e) {

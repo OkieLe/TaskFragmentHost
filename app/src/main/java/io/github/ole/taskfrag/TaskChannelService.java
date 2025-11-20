@@ -90,15 +90,13 @@ public class TaskChannelService extends Service {
         }
 
         @Override
-        public void onOverlayScrolled(int scrollX) {
+        public void onOverlayScrolled(int scrollX, boolean scrolling) {
             if (mTaskOverlayCallback != null) {
                 try {
-                    mTaskOverlayCallback.onOverlayScrolled(scrollX);
+                    mTaskOverlayCallback.onOverlayScrolled(scrollX, scrolling);
                 } catch (RemoteException e) {
                     throw new IllegalStateException("Task host failed to handle scroll");
                 }
-            } else {
-                throw new IllegalStateException("No task host to handle scroll");
             }
         }
     };

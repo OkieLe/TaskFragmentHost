@@ -44,16 +44,16 @@ class DragLayout @JvmOverloads constructor(
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                startX = ev.x
-                startY = ev.y
+                startX = ev.rawX
+                startY = ev.rawY
                 accumulatedX = 0
                 dragging = false
                 // Give child view e.g. ScrollView chance to handle vertical scrolling
                 parent.requestDisallowInterceptTouchEvent(false)
             }
             MotionEvent.ACTION_MOVE -> {
-                val dx = ev.x - startX
-                val dy = ev.y - startY
+                val dx = ev.rawX - startX
+                val dy = ev.rawY - startY
                 if (!dragging) {
                     if (abs(dx) > touchSlop && abs(dx) > abs(dy)) {
                         dragging = true
@@ -75,7 +75,7 @@ class DragLayout @JvmOverloads constructor(
         when (ev.actionMasked) {
             MotionEvent.ACTION_MOVE -> {
                 if (dragging) {
-                    val dx = ev.x - startX
+                    val dx = ev.rawX - startX
                     // update accumulatedX
                     accumulatedX = dx.toInt()
                     listener?.onHorizontalDrag(accumulatedX)

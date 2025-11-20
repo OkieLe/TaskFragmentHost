@@ -60,17 +60,27 @@ class MainActivity : AppCompatActivity() {
             this,
             { fragmentInfo ->
                 logTaskFragmentState(fragmentInfo)
+                handleTaskVisibilityChange()
             },
             { fragmentInfo ->
                 logTaskFragmentState(fragmentInfo)
+                handleTaskVisibilityChange()
             },
             {
                 Log.i(TAG, "onTaskFragmentGone")
+                handleTaskVisibilityChange()
             },
             mainExecutor
         ).apply { createTaskFragment() }
         taskOverlayController.start()
-        taskOverlayController.setScrollHandler {  }
+        taskOverlayController.setScrollHandler { scrollX, scrolling ->
+            if (scrolling && scrollX < 0) {
+                dragTaskFragment(SCREEN_WIDTH + scrollX)
+            } else if (!scrolling) {
+                Log.d(TAG, "Overlay scroll end $scrollX")
+                endDragTaskFragment(SCREEN_WIDTH + scrollX)
+            }
+        }
     }
 
     private fun dragTaskFragment(distancePx: Int) {
@@ -142,8 +152,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun logTaskFragmentState(info: TaskFragmentInfo) {
-        Log.i(TAG, "TaskFragment: vis=${info.isVisible}, top=${info.isTopNonFinishingChild}," +
+        Log.d(TAG, "TaskFragment: vis=${info.isVisible}, top=${info.isTopNonFinishingChild}," +
                 " empty=${info.isEmpty}, actCnt=${info.runningActivityCount}")
+    }
+
+    private fun handleTaskVisibilityChange() {
+        val visible = taskFragmentController.isFragmentOnTop() && !taskFragmentController.isFragmentEmpty()
+        taskOverlayController.setInputInterceptable(visible)
     }
 
     override fun onDestroy() {

@@ -9,6 +9,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
 class OverSideActivity : ComponentActivity() {
+    private val taskHostController by lazy { TaskHostController.get(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -21,6 +22,18 @@ class OverSideActivity : ComponentActivity() {
         }
         findViewById<Button>(R.id.start_external).setOnClickListener { startSettings() }
         findViewById<Button>(R.id.close_this).setOnClickListener { finish() }
+        taskHostController.start()
+        findViewById<DragLayout>(R.id.gesture_layout).setOnHorizontalDragListener(
+            object : DragLayout.OnHorizontalDragListener {
+                override fun onHorizontalDrag(distancePx: Int) {
+                    taskHostController.onScrolled(distancePx, true)
+                }
+
+                override fun onHorizontalDragEnd(endDistancePx: Int) {
+                    taskHostController.onScrolled(endDistancePx, false)
+                }
+            }
+        )
     }
 
     private fun startSettings() {
@@ -28,5 +41,10 @@ class OverSideActivity : ComponentActivity() {
         intent.addCategory(Intent.CATEGORY_LAUNCHER)
         intent.setClassName("com.android.settings", "com.android.settings.Settings")
         startActivity(intent)
+    }
+
+    override fun onDestroy() {
+        taskHostController.stop()
+        super.onDestroy()
     }
 }

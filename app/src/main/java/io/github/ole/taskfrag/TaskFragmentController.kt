@@ -63,12 +63,10 @@ class TaskFragmentController(
                             onInfoChangedCallback(taskFragmentInfo)
                         }
                         TaskFragmentTransaction.TYPE_TASK_FRAGMENT_VANISHED -> {
-                            fragmentInfo = null
                             goneCallback()
                         }
                         TaskFragmentTransaction.TYPE_TASK_FRAGMENT_PARENT_INFO_CHANGED -> {}
                         TaskFragmentTransaction.TYPE_TASK_FRAGMENT_ERROR -> {
-                            fragmentInfo = null
                             goneCallback()
                         }
                         TaskFragmentTransaction.TYPE_ACTIVITY_REPARENTED_TO_TASK -> {}

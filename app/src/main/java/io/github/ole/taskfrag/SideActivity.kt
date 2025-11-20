@@ -2,6 +2,7 @@ package io.github.ole.taskfrag
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.Button
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
@@ -9,6 +10,10 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
 class SideActivity : ComponentActivity() {
+    companion object {
+        private const val TAG = "SideActivity"
+    }
+    private val taskHostController by lazy { TaskHostController.get(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -21,6 +26,20 @@ class SideActivity : ComponentActivity() {
         }
         findViewById<Button>(R.id.start_external).setOnClickListener { startSettings() }
         findViewById<Button>(R.id.start_another).setOnClickListener { startAnother() }
+        taskHostController.start()
+        findViewById<DragLayout>(R.id.gesture_layout).setOnHorizontalDragListener(
+            object : DragLayout.OnHorizontalDragListener {
+                override fun onHorizontalDrag(distancePx: Int) {
+                    Log.d(TAG, "onHorizontalDrag: $distancePx")
+                    taskHostController.onScrolled(distancePx, true)
+                }
+
+                override fun onHorizontalDragEnd(endDistancePx: Int) {
+                    Log.d(TAG, "onHorizontalDragEnd: $endDistancePx")
+                    taskHostController.onScrolled(endDistancePx, false)
+                }
+            }
+        )
     }
 
     private fun startSettings() {
@@ -33,5 +52,10 @@ class SideActivity : ComponentActivity() {
     private fun startAnother() {
         val intent = Intent(this, OverSideActivity::class.java)
         startActivity(intent)
+    }
+
+    override fun onDestroy() {
+        taskHostController.stop()
+        super.onDestroy()
     }
 }

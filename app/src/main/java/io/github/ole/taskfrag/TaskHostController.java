@@ -39,6 +39,7 @@ public class TaskHostController {
             if (mTaskHost == null) {
                 return;
             }
+            Log.d(TAG, "ITaskHost connected");
             try {
                 mTaskHost.asBinder().linkToDeath(mDeathRecipient, 0);
             } catch (RemoteException e) {
@@ -56,6 +57,7 @@ public class TaskHostController {
             if (mTaskHost == null) {
                 return;
             }
+            Log.d(TAG, "ITaskHost disconnected");
             try {
                 mTaskHost.unregisterHostCallback(mHostCallback);
             } catch (RemoteException e) {
@@ -104,10 +106,10 @@ public class TaskHostController {
         mBound = false;
     }
 
-    public void onScrolled(int scrollX) {
+    public void onScrolled(int scrollX, boolean scrolling) {
         if (mTaskHost != null && mInputInterceptable) {
             try {
-                mTaskHost.onOverlayScrolled(scrollX);
+                mTaskHost.onOverlayScrolled(scrollX, scrolling);
             } catch (RemoteException e) {
                 Log.e(TAG, "Failed to send scroll", e);
             }
