@@ -23,6 +23,7 @@ class MainActivity : AppCompatActivity() {
         private const val SCREEN_WIDTH = 1080
         private const val SCREEN_HEIGHT = 2400
         private const val ANIMATE_HIDE_DURATION = 150L
+        private const val ANIMATE_BACK_DURATION = 300L
         private const val ANIMATE_SHOW_DURATION = 180L
     }
     private val taskOverlayController by lazy { TaskOverlayController.get(this) }
@@ -57,7 +58,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         )
-        onBackPressedDispatcher.addCallback(onBackPressedCallback)
+        onBackPressedDispatcher.addCallback(this, onBackPressedCallback)
         taskFragmentController = TaskFragmentController(
             this,
             { fragmentInfo ->
@@ -75,13 +76,29 @@ class MainActivity : AppCompatActivity() {
             mainExecutor
         ).apply { createTaskFragment() }
         taskOverlayController.start()
-        taskOverlayController.setScrollHandler { scrollX, scrolling ->
+        taskOverlayController.setInputHandler(object : TaskOverlayController.InputHandler {
+            override fun onBackPressed(): Boolean {
+                return handleBackFromOverlay()
+            }
 
-            if (scrolling && scrollX < 0) {
-                dragTaskFragment(SCREEN_WIDTH + scrollX)
-            } else if (!scrolling) {
-                Log.d(TAG, "Overlay scroll end $scrollX")
-                endDragTaskFragment(SCREEN_WIDTH + scrollX)
+            override fun onScrolled(scrollX: Int, scrolling: Boolean) {
+                if (scrolling && scrollX < 0) {
+                    dragTaskFragment(SCREEN_WIDTH + scrollX)
+                } else if (!scrolling) {
+                    Log.d(TAG, "Overlay scroll end $scrollX")
+                    endDragTaskFragment(SCREEN_WIDTH + scrollX)
+                }
+            }
+        })
+    }
+
+    private fun handleBackFromOverlay(): Boolean {
+        Log.d(TAG, "handleBackFromOverlay ${taskFragmentController.lastActivityRemaining()}")
+        return taskFragmentController.lastActivityRemaining().also {
+            if (it) {
+                mainExecutor.execute {
+                    animateHideTaskFragment(SCREEN_WIDTH, ANIMATE_BACK_DURATION)
+                }
             }
         }
     }
@@ -111,11 +128,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun animateHideTaskFragment(startX: Int) {
+    private fun animateHideTaskFragment(startX: Int, duration: Long = ANIMATE_HIDE_DURATION) {
         val animator = ValueAnimator.ofInt(startX, 0)
-            .apply {
-                duration = ANIMATE_HIDE_DURATION
-                interpolator = AccelerateInterpolator()
+            .also {
+                it.duration = duration
+                it.interpolator = AccelerateInterpolator()
             }
         animator.addUpdateListener {
             offsetTaskFragment(it.animatedValue as Int)
@@ -128,11 +145,11 @@ class MainActivity : AppCompatActivity() {
         animator.start()
     }
 
-    private fun animateShowTaskFragment(startX: Int) {
+    private fun animateShowTaskFragment(startX: Int, duration: Long = ANIMATE_SHOW_DURATION) {
         val animator = ValueAnimator.ofInt(startX, SCREEN_WIDTH)
-            .apply {
-                duration = ANIMATE_SHOW_DURATION
-                interpolator = DecelerateInterpolator()
+            .also {
+                it.duration = duration
+                it.interpolator = DecelerateInterpolator()
             }
         animator.addUpdateListener {
             offsetTaskFragment(it.animatedValue as Int)

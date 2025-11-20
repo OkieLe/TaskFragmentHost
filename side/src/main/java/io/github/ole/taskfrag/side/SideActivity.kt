@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Button
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -17,6 +18,15 @@ class SideActivity : ComponentActivity() {
     }
     private val taskHostController by lazy { TaskHostController.get(this) }
 
+    private val onBackPressedCallback = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            Log.d(TAG, "handleOnBackPressed")
+            if (taskHostController.onBackPressed().not()) {
+                finish()
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -26,6 +36,7 @@ class SideActivity : ComponentActivity() {
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
         }
+        onBackPressedDispatcher.addCallback(this, onBackPressedCallback)
         findViewById<Button>(R.id.start_external).setOnClickListener { startSettings() }
         findViewById<Button>(R.id.start_another).setOnClickListener { startAnother() }
         taskHostController.start()

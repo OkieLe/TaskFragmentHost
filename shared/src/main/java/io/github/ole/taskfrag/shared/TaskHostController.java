@@ -102,8 +102,22 @@ public class TaskHostController {
     }
 
     private void unbindTaskHost() {
+        if (!mBound) {
+            return;
+        }
         mContext.unbindService(mConnection);
         mBound = false;
+    }
+
+    public boolean onBackPressed() {
+        if (mTaskHost != null && mInputInterceptable) {
+            try {
+                return mTaskHost.onOverlayBackPressed();
+            } catch (RemoteException e) {
+                Log.e(TAG, "Failed to send back", e);
+            }
+        }
+        return false;
     }
 
     public void onScrolled(int scrollX, boolean scrolling) {

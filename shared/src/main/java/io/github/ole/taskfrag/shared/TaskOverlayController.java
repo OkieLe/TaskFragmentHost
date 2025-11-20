@@ -11,7 +11,12 @@ import android.util.Log;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class TaskOverlayController {
-    public interface ScrollHandler {
+    public interface InputHandler {
+        /**
+         * Called when the overlay receives back
+         * @return true if back is handled by host, false if the original window should handle it
+         */
+        boolean onBackPressed();
         /**
          * Called when the overlay has scrolled.
          *
@@ -23,7 +28,7 @@ public class TaskOverlayController {
     private static final String TAG = "TaskOverlayController";
     private final Context mContext;
     private final AtomicInteger mConnectionCount = new AtomicInteger(0);
-    private ScrollHandler mScrollHandler;
+    private InputHandler mInputHandler;
 
     private boolean mBound;
     private boolean mInputInterceptable = false;
@@ -31,9 +36,14 @@ public class TaskOverlayController {
 
     private final ITaskOverlayCallback mOverlayCallback = new ITaskOverlayCallback.Stub() {
         @Override
+        public boolean onOverlayBackPressed() {
+            return mInputHandler != null && mInputHandler.onBackPressed();
+        }
+
+        @Override
         public void onOverlayScrolled(int scrollX, boolean scrolling) {
-            if (mScrollHandler != null) {
-                mScrollHandler.onScrolled(scrollX, scrolling);
+            if (mInputHandler != null) {
+                mInputHandler.onScrolled(scrollX, scrolling);
             }
         }
     };
@@ -115,12 +125,15 @@ public class TaskOverlayController {
     }
 
     private void unbindTaskOverlay() {
+        if (!mBound) {
+            return;
+        }
         mContext.unbindService(mConnection);
         mBound = false;
     }
 
-    public void setScrollHandler(ScrollHandler handler) {
-        mScrollHandler = handler;
+    public void setInputHandler(InputHandler handler) {
+        mInputHandler = handler;
     }
 
     public void setInputInterceptable(boolean enabled) {

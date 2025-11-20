@@ -2,8 +2,10 @@ package io.github.ole.taskfrag.side
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.Button
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -11,8 +13,19 @@ import io.github.ole.taskfrag.shared.DragLayout
 import io.github.ole.taskfrag.shared.TaskHostController
 
 class OverSideActivity : ComponentActivity() {
+    companion object {
+        private const val TAG = "OverSideActivity"
+    }
     private val taskHostController by lazy { TaskHostController.get(this) }
 
+    private val onBackPressedCallback = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            Log.d(TAG, "handleOnBackPressed")
+            if (taskHostController.onBackPressed().not()) {
+                finish()
+            }
+        }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -22,6 +35,7 @@ class OverSideActivity : ComponentActivity() {
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
         }
+        onBackPressedDispatcher.addCallback(this, onBackPressedCallback)
         findViewById<Button>(R.id.start_external).setOnClickListener { startSettings() }
         findViewById<Button>(R.id.close_this).setOnClickListener { finish() }
         taskHostController.start()

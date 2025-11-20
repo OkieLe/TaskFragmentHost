@@ -3,6 +3,12 @@ package io.github.ole.taskfrag.shared;
 interface ITaskOverlayCallback {
 
     /**
+     * User pressed back in task overlay
+     * @return true if back is handled by host, false if the original window should handle it
+     */
+    boolean onOverlayBackPressed();
+
+    /**
      * User scrolls the task overlay out
      * @param scrollX the x position of the scroll
      * @param scrolling whether the scrolling is still going on

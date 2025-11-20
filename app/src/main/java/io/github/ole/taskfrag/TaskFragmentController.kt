@@ -125,6 +125,10 @@ class TaskFragmentController(
         return fragmentInfo?.isTopNonFinishingChild ?: false
     }
 
+    fun lastActivityRemaining(): Boolean {
+        return (fragmentInfo?.runningActivityCount ?: 0) == 1
+    }
+
     fun reorderToTop() {
         organizer.applyTransaction(
             WindowContainerTransaction().addTaskFragmentOperation(
