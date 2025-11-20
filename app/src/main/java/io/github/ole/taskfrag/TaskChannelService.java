@@ -8,6 +8,11 @@ import android.util.Log;
 
 import androidx.annotation.Nullable;
 
+import io.github.ole.taskfrag.shared.ITaskHost;
+import io.github.ole.taskfrag.shared.ITaskHostCallback;
+import io.github.ole.taskfrag.shared.ITaskOverlay;
+import io.github.ole.taskfrag.shared.ITaskOverlayCallback;
+
 public class TaskChannelService extends Service {
     private static final String TAG = "TaskChannelService";
     private static final String ACTION_HOST = "io.github.ole.taskfrag.action.GET_HOST";

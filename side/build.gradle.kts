@@ -4,13 +4,13 @@ plugins {
 }
 
 android {
-    namespace = "io.github.ole.taskfrag"
+    namespace = "io.github.ole.taskfrag.side"
     compileSdk {
         version = release(36)
     }
 
     defaultConfig {
-        applicationId = "io.github.ole.taskfrag"
+        applicationId = "io.github.ole.taskfrag.side"
         minSdk = 35
         targetSdk = 36
         versionCode = 1
@@ -33,16 +33,11 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
-    buildFeatures {
-        aidl = true
-    }
 }
 
 dependencies {
-    compileOnly(files("$rootDir/libs/framework.jar"))
     implementation(project(":shared"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
-    implementation(libs.androidx.activity)
 }

@@ -21,3 +21,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "TaskFragmentHost"
 include(":app")
+include(":shared")
+include(":side")

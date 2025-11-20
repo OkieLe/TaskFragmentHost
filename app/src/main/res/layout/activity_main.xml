@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<io.github.ole.taskfrag.DragLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<io.github.ole.taskfrag.shared.DragLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/main"
     android:layout_width="match_parent"
@@ -22,4 +22,4 @@
         </FrameLayout>
     </androidx.core.widget.NestedScrollView>
 
-</io.github.ole.taskfrag.DragLayout>
+</io.github.ole.taskfrag.shared.DragLayout>

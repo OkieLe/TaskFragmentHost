@@ -14,6 +14,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.animation.addListener
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import io.github.ole.taskfrag.shared.DragLayout
+import io.github.ole.taskfrag.shared.TaskOverlayController
 
 class MainActivity : AppCompatActivity() {
     companion object {
@@ -74,6 +76,7 @@ class MainActivity : AppCompatActivity() {
         ).apply { createTaskFragment() }
         taskOverlayController.start()
         taskOverlayController.setScrollHandler { scrollX, scrolling ->
+
             if (scrolling && scrollX < 0) {
                 dragTaskFragment(SCREEN_WIDTH + scrollX)
             } else if (!scrolling) {
@@ -86,7 +89,9 @@ class MainActivity : AppCompatActivity() {
     private fun dragTaskFragment(distancePx: Int) {
         beforeShowTaskFragment()
         Log.i(TAG, "dragTaskFragment $distancePx")
-        offsetTaskFragment(distancePx)
+        mainExecutor.execute {
+            offsetTaskFragment(distancePx)
+        }
     }
 
     private fun offsetTaskFragment(right: Int) {
@@ -97,10 +102,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun endDragTaskFragment(endDistancePx: Int) {
-        if (endDistancePx < SCREEN_WIDTH / 2) {
-            animateHideTaskFragment(endDistancePx)
-        } else {
-            animateShowTaskFragment(endDistancePx)
+        mainExecutor.execute {
+            if (endDistancePx < SCREEN_WIDTH / 2) {
+                animateHideTaskFragment(endDistancePx)
+            } else {
+                animateShowTaskFragment(endDistancePx)
+            }
         }
     }
 
@@ -135,7 +142,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun startSideActivity() {
         taskFragmentController.startActivityInTaskFragment(
-            Intent(this, SideActivity::class.java))
+            Intent(Intent.ACTION_MAIN).apply {
+                setClassName("io.github.ole.taskfrag.side",
+                    "io.github.ole.taskfrag.side.SideActivity")
+            }
+        )
     }
 
     private fun beforeShowTaskFragment() {

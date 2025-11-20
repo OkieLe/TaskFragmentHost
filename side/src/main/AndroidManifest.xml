@@ -1,10 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="io.github.ole.taskfrag">
-
-    <uses-permission android:name="android.permission.MANAGE_ACTIVITY_TASKS"
-        tools:ignore="ProtectedPermissions" />
+    package="io.github.ole.taskfrag.side">
 
     <application
         android:allowBackup="true"
@@ -15,26 +11,24 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.TaskFragmentHost">
-        <activity
-            android:name=".MainActivity"
-            android:exported="true">
+        <activity android:name=".SideActivity"
+            android:exported="true"
+            android:enabled="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
-                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
-        <service
-            android:name=".TaskChannelService"
+        <activity android:name=".OverSideActivity"
             android:exported="true"
-            tools:ignore="ExportedService">
+            android:enabled="true">
             <intent-filter>
-                <action android:name="io.github.ole.taskfrag.action.GET_HOST" />
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-            <intent-filter>
-                <action android:name="io.github.ole.taskfrag.action.GET_OVERLAY" />
-            </intent-filter>
-        </service>
+        </activity>
     </application>
 
 </manifest>

@@ -1,20 +1,17 @@
 plugins {
-    alias(libs.plugins.android.application)
+    alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
 }
 
 android {
-    namespace = "io.github.ole.taskfrag"
+    namespace = "io.github.ole.taskfrag.shared"
     compileSdk {
         version = release(36)
     }
 
     defaultConfig {
-        applicationId = "io.github.ole.taskfrag"
         minSdk = 35
-        targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        consumerProguardFiles("consumer-rules.pro")
     }
 
     buildTypes {
@@ -39,10 +36,6 @@ android {
 }
 
 dependencies {
-    compileOnly(files("$rootDir/libs/framework.jar"))
-    implementation(project(":shared"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
-    implementation(libs.material)
-    implementation(libs.androidx.activity)
 }

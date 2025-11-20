@@ -1,19 +1,31 @@
-android_app {
-    name: "TaskLauncher",
+android_library {
+    name: "task-fragment-shared",
     srcs: [
-        "src/main/aidl/**/*.aidl",
-        "src/main/java/**/*.java",
-        "src/main/java/**/*.kt",
+        "shared/main/aidl/**/*.aidl",
+        "shared/main/java/**/*.java",
+        "shared/main/java/**/*.kt",
     ],
     aidl: {
         local_include_dirs: [
-            "src/main/aidl",
+            "shared/main/aidl",
         ],
     },
-    resource_dirs: ["src/main/res"],
-    manifest : "src/main/AndroidManifest.xml",
+    manifest : "shared/main/AndroidManifest.xml",
+    static_libs : [
+        "androidx.core_core-ktx",
+        "androidx.appcompat_appcompat",
+    ]
+}
+
+android_app {
+    name: "TaskFragment-Side",
+    srcs: [
+        "side/main/java/**/*.java",
+        "side/main/java/**/*.kt",
+    ],
+    resource_dirs: ["side/main/res"],
+    manifest : "side/main/AndroidManifest.xml",
     platform_apis: true,
-    privileged: true,
     certificate: "platform",
     optimize : {
         enabled : false,
@@ -25,5 +37,30 @@ android_app {
         "androidx.core_core-ktx",
         "androidx.appcompat_appcompat",
         "com.google.android.material_material",
+        "task-fragment-shared"
+    ]
+}
+
+android_app {
+    name: "TaskFragment-Host",
+    srcs: [
+        "host/main/java/**/*.java",
+        "host/main/java/**/*.kt",
+    ],
+    resource_dirs: ["host/main/res"],
+    manifest : "host/main/AndroidManifest.xml",
+    platform_apis: true,
+    certificate: "platform",
+    optimize : {
+        enabled : false,
+    },
+    dex_preopt : {
+        enabled : false
+    },
+    static_libs : [
+        "androidx.core_core-ktx",
+        "androidx.appcompat_appcompat",
+        "com.google.android.material_material",
+        "task-fragment-shared"
     ]
 }
