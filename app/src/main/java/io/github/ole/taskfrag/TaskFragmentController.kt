@@ -5,6 +5,7 @@ import android.app.WindowConfiguration
 import android.content.Intent
 import android.graphics.Rect
 import android.os.Binder
+import android.util.Log
 import android.window.TaskFragmentCreationParams
 import android.window.TaskFragmentInfo
 import android.window.TaskFragmentOperation
@@ -26,8 +27,13 @@ class TaskFragmentController(
     private val goneCallback: FragmentGoneCallback,
     executor: Executor
 ) {
+    companion object {
+        private const val TAG = "TaskFragmentController"
+        private const val DEBOUNCE_DURATION = 150L
+    }
     private val fragmentToken = Binder()
     private var fragmentInfo: TaskFragmentInfo? = null
+    private var lastLaunchIntent = Pair(Intent(), 0L)
 
     class Organizer(val component: WeakReference<TaskFragmentController>, executor: Executor) :
         TaskFragmentOrganizer(executor) {
@@ -71,7 +77,7 @@ class TaskFragmentController(
                         }
                         TaskFragmentTransaction.TYPE_ACTIVITY_REPARENTED_TO_TASK -> {}
                         else ->
-                            throw kotlin.IllegalArgumentException(
+                            throw IllegalArgumentException(
                                 "Unknown TaskFragmentEvent=" + change.type
                             )
                     }
@@ -88,6 +94,7 @@ class TaskFragmentController(
 
     /** Creates the task fragment */
     fun createTaskFragment() {
+        Log.d(TAG, "createTaskFragment")
         val fragmentOptions =
             TaskFragmentCreationParams.Builder(
                 organizer.organizerToken,
@@ -110,6 +117,14 @@ class TaskFragmentController(
 
     /** Starts the provided activity in the fragment and move it to the background */
     fun startActivityInTaskFragment(intent: Intent) {
+        Log.d(TAG, "startActivityInTaskFragment $intent lastTime=${lastLaunchIntent.second}")
+        val now = System.currentTimeMillis()
+        if (intent.filterEquals(lastLaunchIntent.first) &&
+                now - lastLaunchIntent.second < DEBOUNCE_DURATION) {
+            Log.w(TAG, "Start same intent twice")
+            return
+        }
+        lastLaunchIntent = Pair(intent, now)
         organizer.applyTransaction(
             WindowContainerTransaction().startActivity(intent),
             TaskFragmentOrganizer.TASK_FRAGMENT_TRANSIT_OPEN,
@@ -118,7 +133,9 @@ class TaskFragmentController(
     }
 
     fun isFragmentEmpty(): Boolean {
-        return fragmentInfo?.isEmpty ?: true
+        // Don't allow start activity in a creating fragment
+        // Take null fragment info as non-empty
+        return fragmentInfo?.isEmpty ?: false
     }
 
     fun isFragmentOnTop(): Boolean {
@@ -130,6 +147,7 @@ class TaskFragmentController(
     }
 
     fun reorderToTop() {
+        Log.d(TAG, "reorderToTop ${fragmentInfo?.fragmentToken}")
         organizer.applyTransaction(
             WindowContainerTransaction().addTaskFragmentOperation(
                 fragmentToken,
@@ -143,6 +161,7 @@ class TaskFragmentController(
     }
 
     fun reorderToBottom() {
+        Log.d(TAG, "reorderToBottom ${fragmentInfo?.fragmentToken}")
         organizer.applyTransaction(
             WindowContainerTransaction().addTaskFragmentOperation(
                 fragmentToken,
@@ -156,6 +175,7 @@ class TaskFragmentController(
     }
 
     fun moveTaskFragment(rect: Rect) {
+        Log.d(TAG, "moveTaskFragment ${fragmentInfo?.fragmentToken} $rect")
         fragmentInfo?.token?.let { token ->
             organizer.applyTransaction(
                 WindowContainerTransaction().setRelativeBounds(
@@ -168,6 +188,7 @@ class TaskFragmentController(
     }
 
     fun destroyTaskFragment() {
+        Log.d(TAG, "destroyTaskFragment ${fragmentInfo?.fragmentToken}")
         organizer.applyTransaction(
             WindowContainerTransaction().addTaskFragmentOperation(
                 fragmentToken,

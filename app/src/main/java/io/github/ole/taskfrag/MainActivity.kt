@@ -162,6 +162,7 @@ class MainActivity : AppCompatActivity() {
             Intent(Intent.ACTION_MAIN).apply {
                 setClassName("io.github.ole.taskfrag.side",
                     "io.github.ole.taskfrag.side.SideActivity")
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
             }
         )
     }
@@ -180,8 +181,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun logTaskFragmentState(info: TaskFragmentInfo) {
-        Log.d(TAG, "TaskFragment: vis=${info.isVisible}, top=${info.isTopNonFinishingChild}," +
-                " empty=${info.isEmpty}, actCnt=${info.runningActivityCount}")
+        info.activities
+        Log.d(TAG, "TaskFragment: vis=${info.isVisible}," +
+                " top=${info.isTopNonFinishingChild}, empty=${info.isEmpty}," +
+                " runCnt=${info.runningActivityCount}")
     }
 
     private fun handleTaskVisibilityChange() {
