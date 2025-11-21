@@ -1,0 +1,1210 @@
+From a5e163a034ad87057bbbdf8830d42bcd6659d68e Mon Sep 17 00:00:00 2001
+From: Le <xingled@gmail.com>
+Date: Fri, 21 Nov 2025 10:58:03 +0800
+Subject: [PATCH] [Le] working with TaskFragment
+
+Change-Id: Ie7ffefeefe42d2ce11a610fbed1ae0f5f051034f
+---
+ Android.bp                                    |   7 +
+ AndroidManifest-common.xml                    |  19 ++
+ .../android/quickstep/InputConsumerUtils.kt   |  19 +-
+ src/com/android/launcher3/Launcher.java       |   8 +-
+ .../ole/taskfrag/TaskChannelService.java      | 132 +++++++++++
+ .../ole/taskfrag/TaskFragmentController.kt    | 209 +++++++++++++++++
+ .../ole/taskfrag/TaskFragmentOverlay.kt       | 213 ++++++++++++++++++
+ .../github/ole/taskfrag/shared/ITaskHost.aidl |  31 +++
+ .../taskfrag/shared/ITaskHostCallback.aidl    |  10 +
+ .../ole/taskfrag/shared/ITaskOverlay.aidl     |  21 ++
+ .../taskfrag/shared/ITaskOverlayCallback.aidl |  17 ++
+ .../taskfrag/shared/TaskHostController.java   | 140 ++++++++++++
+ .../shared/TaskOverlayController.java         | 161 +++++++++++++
+ 13 files changed, 979 insertions(+), 8 deletions(-)
+ create mode 100644 src/io/github/ole/taskfrag/TaskChannelService.java
+ create mode 100644 src/io/github/ole/taskfrag/TaskFragmentController.kt
+ create mode 100644 src/io/github/ole/taskfrag/TaskFragmentOverlay.kt
+ create mode 100644 src/io/github/ole/taskfrag/shared/ITaskHost.aidl
+ create mode 100644 src/io/github/ole/taskfrag/shared/ITaskHostCallback.aidl
+ create mode 100644 src/io/github/ole/taskfrag/shared/ITaskOverlay.aidl
+ create mode 100644 src/io/github/ole/taskfrag/shared/ITaskOverlayCallback.aidl
+ create mode 100644 src/io/github/ole/taskfrag/shared/TaskHostController.java
+ create mode 100644 src/io/github/ole/taskfrag/shared/TaskOverlayController.java
+
+diff --git a/Android.bp b/Android.bp
+index 73d0fce260..f038aa6472 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -39,6 +39,7 @@ filegroup {
+     srcs: [
+         "src/**/*.java",
+         "src/**/*.kt",
++        "src/**/*.aidl",
+     ],
+ }
+ 
+@@ -529,6 +530,11 @@ android_library {
+         ":launcher-quickstep-dagger",
+         ":launcher-build-config",
+     ],
++    aidl: {
++        local_include_dirs: [
++            "src/",
++        ],
++    },
+     resource_dirs: [],
+     libs: [
+         "framework-statsd.stubs.module_lib",
+@@ -565,6 +571,7 @@ android_app {
+ 
+     privileged: true,
+     system_ext_specific: true,
++    certificate: "platform",
+     overrides: [
+         "Home",
+         "Launcher2",
+diff --git a/AndroidManifest-common.xml b/AndroidManifest-common.xml
+index 80d2eaca23..7a71efdece 100644
+--- a/AndroidManifest-common.xml
++++ b/AndroidManifest-common.xml
+@@ -45,6 +45,11 @@
+     <uses-permission android:name="android.permission.ROTATE_SURFACE_FLINGER" />
+     <uses-permission android:name="android.permission.WAKEUP_SURFACE_FLINGER" />
+     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
++    <uses-permission android:name="android.permission.MANAGE_ACTIVITY_TASKS" />
++
++    <permission android:name="im.brain.window.permission.MANAGE_OVERLAY"
++        android:protectionLevel="privileged|signature"/>
++    <uses-permission android:name="im.brain.window.permission.MANAGE_OVERLAY" />
+ 
+     <!--
+     Permissions required for read/write access to the workspace data. These permission name
+@@ -188,5 +193,19 @@
+         <property
+             android:name="android.window.PROPERTY_ACTIVITY_EMBEDDING_SPLITS_ENABLED"
+             android:value="true" />
++
++        <service android:name="io.github.ole.taskfrag.TaskChannelService"
++            android:exported="true"
++            android:enabled="true"
++            android:directBootAware="true">
++            <intent-filter>
++                <action android:name="io.github.ole.taskfrag.action.GET_OVERLAY"/>
++                <category android:name="android.intent.category.DEFAULT"/>
++            </intent-filter>
++            <intent-filter>
++                <action android:name="io.github.ole.taskfrag.action.GET_HOST"/>
++                <category android:name="android.intent.category.DEFAULT"/>
++            </intent-filter>
++        </service>
+     </application>
+ </manifest>
+diff --git a/quickstep/src/com/android/quickstep/InputConsumerUtils.kt b/quickstep/src/com/android/quickstep/InputConsumerUtils.kt
+index bea3150bcb..54966723d7 100644
+--- a/quickstep/src/com/android/quickstep/InputConsumerUtils.kt
++++ b/quickstep/src/com/android/quickstep/InputConsumerUtils.kt
+@@ -16,12 +16,14 @@
+ package com.android.quickstep
+ 
+ import android.content.Context
++import android.util.Log
+ import android.view.MotionEvent
+ import androidx.annotation.VisibleForTesting
+ import com.android.launcher3.anim.AnimatedFloat
+ import com.android.launcher3.statemanager.BaseState
+ import com.android.launcher3.statemanager.StatefulContainer
+ import com.android.launcher3.taskbar.TaskbarManager
++import com.android.launcher3.uioverrides.QuickstepLauncher
+ import com.android.launcher3.util.LockedUserState.Companion.get
+ import com.android.quickstep.inputconsumers.AccessibilityInputConsumer
+ import com.android.quickstep.inputconsumers.AssistantInputConsumer
+@@ -510,7 +512,7 @@ object InputConsumerUtils {
+         } else if (
+             previousGestureAnimatedToLauncher ||
+                 launcherResumedThroughShellTransition ||
+-                forceOverviewInputConsumer
++                forceOverviewInputConsumer || launcherChildActivityResumed
+         ) {
+             createOverviewInputConsumer<S, T>(
+                 resetGestureInputConsumer,
+@@ -527,19 +529,19 @@ object InputConsumerUtils {
+                         (if (launcherResumedThroughShellTransition)
+                             ("%slauncher resumed through a shell transition, " +
+                                 "trying to use overview input consumer")
++                        else if (launcherChildActivityResumed)
++                            "%sis launcher child-task, trying to use overview input consumer"
+                         else
+                             ("%sforceOverviewInputConsumer == true, " +
+                                 "trying to use overview input consumer")),
+                     SUBSTRING_PREFIX,
+                 ),
+             )
+-        } else if (deviceState.isGestureBlockedTask(runningTask) || launcherChildActivityResumed) {
++        } else if (deviceState.isGestureBlockedTask(runningTask)) {
+             getDefaultInputConsumer(
+                 resetGestureInputConsumer,
+                 reasonString.append(
+-                    if (launcherChildActivityResumed)
+-                        "%sis launcher child-task, trying to use default input consumer"
+-                    else "%sis gesture-blocked task, trying to use default input consumer",
++                    "%sis gesture-blocked task, trying to use default input consumer",
+                     SUBSTRING_PREFIX,
+                 ),
+             )
+@@ -619,6 +621,7 @@ object InputConsumerUtils {
+                     ),
+                 )
+ 
++        val isTaskOverlayShown = (container as? QuickstepLauncher)?.isTaskOverlayShown() ?: false
+         val rootView = container.rootView
+         val hasWindowFocus = rootView?.hasWindowFocus() ?: false
+         val isPreviousGestureAnimatingToLauncher =
+@@ -628,7 +631,8 @@ object InputConsumerUtils {
+             gestureState.getContainerInterface<S, T>().isInLiveTileMode()
+ 
+         reasonString.append(
+-            if (hasWindowFocus) "%sactivity has window focus"
++            if (isTaskOverlayShown) "%stask fragment included in launcher"
++            else if (hasWindowFocus) "%sactivity has window focus"
+             else
+                 (if (isPreviousGestureAnimatingToLauncher)
+                     "%sprevious gesture is still animating to launcher"
+@@ -636,7 +640,7 @@ object InputConsumerUtils {
+                 else "%sall overview focus conditions failed"),
+             SUBSTRING_PREFIX,
+         )
+-        return if (hasWindowFocus || isPreviousGestureAnimatingToLauncher || isInLiveTileMode) {
++        return if (isTaskOverlayShown || hasWindowFocus || isPreviousGestureAnimatingToLauncher || isInLiveTileMode) {
+             reasonString.append(
+                 "%soverview should have focus, using OverviewInputConsumer",
+                 SUBSTRING_PREFIX,
+@@ -725,6 +729,7 @@ object InputConsumerUtils {
+         consumer: InputConsumer,
+         reasonString: CompoundString,
+     ) {
++        Log.d("InputConsumerUtils", "Set ${consumer.name} ${reasonString.toString()}")
+         ActiveGestureProtoLogProxy.logSetInputConsumer(consumer.name, reasonString.toString())
+         if ((consumer.type and InputConsumer.TYPE_OTHER_ACTIVITY) != 0) {
+             ActiveGestureLog.INSTANCE.trackEvent(
+diff --git a/src/com/android/launcher3/Launcher.java b/src/com/android/launcher3/Launcher.java
+index 0d64d9fb81..609e7f90fa 100644
+--- a/src/com/android/launcher3/Launcher.java
++++ b/src/com/android/launcher3/Launcher.java
+@@ -272,6 +272,7 @@ import com.android.systemui.plugins.PluginListener;
+ import com.android.systemui.plugins.shared.LauncherOverlayManager;
+ import com.android.systemui.plugins.shared.LauncherOverlayManager.LauncherOverlayTouchProxy;
+ import com.android.window.flags.Flags;
++import io.github.ole.taskfrag.TaskFragmentOverlay;
+ 
+ import java.io.FileDescriptor;
+ import java.io.PrintWriter;
+@@ -701,7 +702,11 @@ public class Launcher extends StatefulActivity<LauncherState>
+     }
+ 
+     protected LauncherOverlayManager getDefaultOverlay() {
+-        return new LauncherOverlayManager() { };
++        return new TaskFragmentOverlay(this);
++    }
++
++    public boolean isTaskOverlayShown() {
++        return mOverlayManager instanceof TaskFragmentOverlay && ((TaskFragmentOverlay) mOverlayManager).isShown();
+     }
+ 
+     @Override
+@@ -735,6 +740,7 @@ public class Launcher extends StatefulActivity<LauncherState>
+     @Override
+     public void onEnterAnimationComplete() {
+         super.onEnterAnimationComplete();
++        Log.d(TAG, "onEnterAnimationComplete");
+         mRotationHelper.setCurrentTransitionRequest(REQUEST_NONE);
+     }
+ 
+diff --git a/src/io/github/ole/taskfrag/TaskChannelService.java b/src/io/github/ole/taskfrag/TaskChannelService.java
+new file mode 100644
+index 0000000000..12c3c58e42
+--- /dev/null
++++ b/src/io/github/ole/taskfrag/TaskChannelService.java
+@@ -0,0 +1,132 @@
++package io.github.ole.taskfrag;
++
++import android.app.Service;
++import android.content.Intent;
++import android.os.IBinder;
++import android.os.RemoteException;
++import android.util.Log;
++
++import androidx.annotation.Nullable;
++
++import io.github.ole.taskfrag.shared.ITaskHost;
++import io.github.ole.taskfrag.shared.ITaskHostCallback;
++import io.github.ole.taskfrag.shared.ITaskOverlay;
++import io.github.ole.taskfrag.shared.ITaskOverlayCallback;
++
++public class TaskChannelService extends Service {
++    private static final String TAG = "TaskChannelService";
++    private static final String ACTION_HOST = "io.github.ole.taskfrag.action.GET_HOST";
++    private static final String ACTION_OVERLAY = "io.github.ole.taskfrag.action.GET_OVERLAY";
++
++    private boolean mInputInterceptable = false;
++    private ITaskOverlayCallback mTaskOverlayCallback;
++    private final IBinder.DeathRecipient mOverlayRecipient = new IBinder.DeathRecipient() {
++        @Override
++        public void binderDied() {
++            mTaskOverlayCallback = null;
++        }
++    };
++    private final ITaskOverlay mTaskOverlay = new ITaskOverlay.Stub() {
++        @Override
++        public void registerOverlayCallback(ITaskOverlayCallback overlay) {
++            mTaskOverlayCallback = overlay;
++            if (mTaskOverlayCallback != null) {
++                try {
++                    mTaskOverlayCallback.asBinder().linkToDeath(mOverlayRecipient, 0);
++                } catch (RemoteException e) {
++                    Log.e(TAG, "Failed to link to death", e);
++                }
++            }
++        }
++
++        @Override
++        public void unregisterOverlayCallback(ITaskOverlayCallback overlay) {
++            if (mTaskOverlayCallback == null) {
++                return;
++            }
++            mTaskOverlayCallback.asBinder().unlinkToDeath(mOverlayRecipient, 0);
++            mTaskOverlayCallback = null;
++        }
++
++        @Override
++        public void setInputInterceptable(boolean enabled) {
++            mInputInterceptable = enabled;
++            if (mTaskHostCallback != null) {
++                try {
++                    mTaskHostCallback.setInputInterceptable(enabled);
++                } catch (RemoteException e) {
++                    Log.i(TAG, "Failed to set back interceptable");
++                }
++            }
++        }
++    };
++    private ITaskHostCallback mTaskHostCallback;
++    private final IBinder.DeathRecipient mTaskHostRecipient = new IBinder.DeathRecipient() {
++        @Override
++        public void binderDied() {
++            mTaskHostCallback = null;
++        }
++    };
++    private final ITaskHost mTaskHost = new ITaskHost.Stub() {
++        @Override
++        public void registerHostCallback(ITaskHostCallback host) {
++            mTaskHostCallback = host;
++            if (mTaskHostCallback != null) {
++                try {
++                    mTaskHostCallback.asBinder().linkToDeath(mTaskHostRecipient, 0);
++                } catch (RemoteException e) {
++                    Log.e(TAG, "Failed to link to death", e);
++                }
++                try {
++                    mTaskHostCallback.setInputInterceptable(mInputInterceptable);
++                } catch (RemoteException e) {
++                    Log.i(TAG, "Failed to set back interceptable");
++                }
++            }
++        }
++
++        @Override
++        public void unregisterHostCallback(ITaskHostCallback host) {
++            if (mTaskHostCallback == null) {
++                return;
++            }
++            mTaskHostCallback.asBinder().unlinkToDeath(mTaskHostRecipient, 0);
++            mTaskHostCallback = null;
++        }
++
++        @Override
++        public boolean onOverlayBackPressed() {
++            if (mTaskOverlayCallback != null) {
++                try {
++                    return mTaskOverlayCallback.onOverlayBackPressed();
++                } catch (RemoteException e) {
++                    Log.w(TAG, "Task host failed to handle back");
++                    return false;
++                }
++            }
++            return false;
++        }
++
++        @Override
++        public void onOverlayScrolled(int scrollX, boolean scrolling) {
++            if (mTaskOverlayCallback != null) {
++                try {
++                    mTaskOverlayCallback.onOverlayScrolled(scrollX, scrolling);
++                } catch (RemoteException e) {
++                    throw new IllegalStateException("Task host failed to handle scroll");
++                }
++            }
++        }
++    };
++
++    @Nullable
++    @Override
++    public IBinder onBind(Intent intent) {
++        if (ACTION_HOST.equals(intent.getAction())) {
++            return mTaskHost.asBinder();
++        } else if (ACTION_OVERLAY.equals(intent.getAction())) {
++            return mTaskOverlay.asBinder();
++        }
++        return null;
++    }
++}
+diff --git a/src/io/github/ole/taskfrag/TaskFragmentController.kt b/src/io/github/ole/taskfrag/TaskFragmentController.kt
+new file mode 100644
+index 0000000000..1cd38707b1
+--- /dev/null
++++ b/src/io/github/ole/taskfrag/TaskFragmentController.kt
+@@ -0,0 +1,209 @@
++package io.github.ole.taskfrag
++
++import android.app.Activity
++import android.app.WindowConfiguration
++import android.content.Intent
++import android.graphics.Rect
++import android.os.Binder
++import android.util.Log
++import android.window.TaskFragmentCreationParams
++import android.window.TaskFragmentInfo
++import android.window.TaskFragmentOperation
++import android.window.TaskFragmentOrganizer
++import android.window.TaskFragmentTransaction
++import android.window.WindowContainerTransaction
++import java.lang.ref.WeakReference
++import java.util.concurrent.Executor
++import kotlin.apply
++import kotlin.let
++
++typealias FragmentInfoCallback = (TaskFragmentInfo) -> Unit
++typealias FragmentGoneCallback = () -> Unit
++
++class TaskFragmentController(
++    private val activity: Activity,
++    private val onCreateCallback: FragmentInfoCallback,
++    private val onInfoChangedCallback: FragmentInfoCallback,
++    private val goneCallback: FragmentGoneCallback,
++    executor: Executor
++) {
++    companion object {
++        private const val TAG = "TaskFragmentController"
++        private const val DEBOUNCE_DURATION = 150L
++    }
++    private val fragmentToken = Binder()
++    private var fragmentInfo: TaskFragmentInfo? = null
++    private var lastLaunchIntent = Pair(Intent(), 0L)
++
++    class Organizer(val component: WeakReference<TaskFragmentController>, executor: Executor) :
++        TaskFragmentOrganizer(executor) {
++
++        override fun onTransactionReady(transaction: TaskFragmentTransaction) {
++            component.get()?.handleTransactionReady(transaction)
++        }
++    }
++
++    private val organizer: TaskFragmentOrganizer =
++        Organizer(WeakReference(this), executor).apply {
++            registerOrganizer(true /* isSystemOrganizer */)
++        }
++
++    private fun handleTransactionReady(transaction: TaskFragmentTransaction) {
++        val resultT = WindowContainerTransaction()
++
++        for (change in transaction.changes) {
++            change.taskFragmentInfo?.let { taskFragmentInfo ->
++                if (taskFragmentInfo.fragmentToken == fragmentToken) {
++                    fragmentInfo = taskFragmentInfo
++                    when (change.type) {
++                        TaskFragmentTransaction.TYPE_TASK_FRAGMENT_APPEARED -> {
++                            resultT.addTaskFragmentOperation(
++                                fragmentToken,
++                                TaskFragmentOperation.Builder(
++                                    TaskFragmentOperation.OP_TYPE_REORDER_TO_TOP_OF_TASK
++                                ).build(),
++                            )
++                            onCreateCallback(taskFragmentInfo)
++                        }
++                        TaskFragmentTransaction.TYPE_TASK_FRAGMENT_INFO_CHANGED -> {
++                            onInfoChangedCallback(taskFragmentInfo)
++                        }
++                        TaskFragmentTransaction.TYPE_TASK_FRAGMENT_VANISHED -> {
++                            goneCallback()
++                        }
++                        TaskFragmentTransaction.TYPE_TASK_FRAGMENT_PARENT_INFO_CHANGED -> {}
++                        TaskFragmentTransaction.TYPE_TASK_FRAGMENT_ERROR -> {
++                            goneCallback()
++                        }
++                        TaskFragmentTransaction.TYPE_ACTIVITY_REPARENTED_TO_TASK -> {}
++                        else ->
++                            throw IllegalArgumentException(
++                                "Unknown TaskFragmentEvent=" + change.type
++                            )
++                    }
++                }
++            }
++        }
++        organizer.onTransactionHandled(
++            transaction.transactionToken,
++            resultT,
++            TaskFragmentOrganizer.TASK_FRAGMENT_TRANSIT_CHANGE,
++            false,
++        )
++    }
++
++    /** Creates the task fragment */
++    fun createTaskFragment() {
++        Log.d(TAG, "createTaskFragment")
++        val fragmentOptions =
++            TaskFragmentCreationParams.Builder(
++                organizer.organizerToken,
++                fragmentToken,
++                activity.activityToken!!,
++            )
++                .setInitialRelativeBounds(Rect())
++                .setWindowingMode(WindowConfiguration.WINDOWING_MODE_FULLSCREEN)
++                .build()
++        organizer.applyTransaction(
++            WindowContainerTransaction().createTaskFragment(fragmentOptions),
++            TaskFragmentOrganizer.TASK_FRAGMENT_TRANSIT_CHANGE,
++            false,
++        )
++    }
++
++    private fun WindowContainerTransaction.startActivity(intent: Intent) =
++        this.startActivityInTaskFragment(fragmentToken, activity.activityToken!!,
++            intent, null)
++
++    /** Starts the provided activity in the fragment and move it to the background */
++    fun startActivityInTaskFragment(intent: Intent) {
++        Log.d(TAG, "startActivityInTaskFragment $intent lastTime=${lastLaunchIntent.second}")
++        val now = System.currentTimeMillis()
++        if (intent.filterEquals(lastLaunchIntent.first) &&
++                now - lastLaunchIntent.second < DEBOUNCE_DURATION) {
++            Log.w(TAG, "Duplicated intent found")
++            return
++        }
++        lastLaunchIntent = Pair(intent, now)
++        organizer.applyTransaction(
++            WindowContainerTransaction().startActivity(intent),
++            TaskFragmentOrganizer.TASK_FRAGMENT_TRANSIT_OPEN,
++            false,
++        )
++    }
++
++    fun isFragmentEmpty(): Boolean {
++        // Don't allow start activity in a creating fragment
++        // Take null fragment info as non-empty
++        return fragmentInfo?.isEmpty ?: false
++    }
++
++    fun isFragmentOnTop(): Boolean {
++        return fragmentInfo?.isTopNonFinishingChild ?: false
++    }
++
++    fun lastActivityRemaining(): Boolean {
++        return (fragmentInfo?.runningActivityCount ?: 0) == 1
++    }
++
++    fun reorderToTop() {
++        Log.d(TAG, "reorderToTop ${fragmentInfo?.fragmentToken}")
++        organizer.applyTransaction(
++            WindowContainerTransaction().addTaskFragmentOperation(
++                fragmentToken,
++                TaskFragmentOperation.Builder(
++                    TaskFragmentOperation.OP_TYPE_REORDER_TO_TOP_OF_TASK
++                ).build(),
++            ),
++            TaskFragmentOrganizer.TASK_FRAGMENT_TRANSIT_CHANGE,
++            false,
++        )
++    }
++
++    fun reorderToBottom() {
++        Log.d(TAG, "reorderToBottom ${fragmentInfo?.fragmentToken}")
++        organizer.applyTransaction(
++            WindowContainerTransaction().addTaskFragmentOperation(
++                fragmentToken,
++                TaskFragmentOperation.Builder(
++                    TaskFragmentOperation.OP_TYPE_REORDER_TO_BOTTOM_OF_TASK
++                ).build(),
++            ),
++            TaskFragmentOrganizer.TASK_FRAGMENT_TRANSIT_CHANGE,
++            false,
++        )
++    }
++
++    fun moveTaskFragment(rect: Rect) {
++        Log.d(TAG, "moveTaskFragment ${fragmentInfo?.fragmentToken} $rect")
++        fragmentInfo?.token?.let { token ->
++            organizer.applyTransaction(
++                WindowContainerTransaction().setRelativeBounds(
++                    token, rect
++                ),
++                TaskFragmentOrganizer.TASK_FRAGMENT_TRANSIT_CHANGE,
++                false,
++            )
++        }
++    }
++
++    fun destroyTaskFragment() {
++        Log.d(TAG, "destroyTaskFragment ${fragmentInfo?.fragmentToken}")
++        organizer.applyTransaction(
++            WindowContainerTransaction().addTaskFragmentOperation(
++                fragmentToken,
++                TaskFragmentOperation.Builder(
++                    TaskFragmentOperation.OP_TYPE_DELETE_TASK_FRAGMENT
++                ).build(),
++            ),
++            TaskFragmentOrganizer.TASK_FRAGMENT_TRANSIT_CLOSE,
++            false,
++        )
++    }
++
++    /** Destroys the task fragment */
++    fun destroy() {
++        destroyTaskFragment()
++        organizer.unregisterOrganizer()
++    }
++}
+diff --git a/src/io/github/ole/taskfrag/TaskFragmentOverlay.kt b/src/io/github/ole/taskfrag/TaskFragmentOverlay.kt
+new file mode 100644
+index 0000000000..4eef09ef6c
+--- /dev/null
++++ b/src/io/github/ole/taskfrag/TaskFragmentOverlay.kt
+@@ -0,0 +1,213 @@
++package io.github.ole.taskfrag
++
++import android.animation.Animator
++import android.animation.ValueAnimator
++import android.content.Intent
++import android.graphics.Rect
++import android.util.Log
++import android.view.animation.AccelerateInterpolator
++import android.view.animation.DecelerateInterpolator
++import android.view.MotionEvent
++import android.window.TaskFragmentInfo
++import androidx.core.animation.addListener
++import com.android.systemui.plugins.shared.LauncherOverlayManager
++import com.android.launcher3.Launcher
++import io.github.ole.taskfrag.shared.TaskOverlayController
++import io.github.ole.taskfrag.TaskFragmentController
++import java.util.concurrent.Executor
++
++class TaskFragmentOverlay(private val launcher: Launcher) : LauncherOverlayManager {
++    companion object {
++        private const val TAG = "TaskFragmentOverlay"
++        private const val SCREEN_WIDTH = 1080
++        private const val SCREEN_HEIGHT = 2400
++        private const val ANIMATE_HIDE_DURATION = 150L
++        private const val ANIMATE_BACK_DURATION = 300L
++        private const val ANIMATE_SHOW_DURATION = 180L
++    }
++
++    private val touchProxy = object : LauncherOverlayManager.LauncherOverlayTouchProxy {
++        override fun onFlingVelocity(velocity: Float) {
++            Log.d(TAG, "onFlingVelocity $velocity")
++        }
++
++        override fun onOverlayMotionEvent(ev: MotionEvent?, scrollProgress: Float) {
++            Log.d(TAG, "onOverlayMotionEvent move $scrollProgress")
++            when (ev?.action) {
++                MotionEvent.ACTION_DOWN -> {
++                    dragTaskFragment((SCREEN_WIDTH * scrollProgress).toInt())
++                }
++                MotionEvent.ACTION_MOVE -> {
++                    dragTaskFragment((SCREEN_WIDTH * scrollProgress).toInt())
++                }
++                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
++                    endDragTaskFragment((SCREEN_WIDTH * scrollProgress).toInt())
++                }
++            }
++        }
++    }
++    private val taskOverlayController: TaskOverlayController = TaskOverlayController.get(launcher)
++    private val taskFragmentController: TaskFragmentController
++    private val mainExecutor: Executor = launcher.mainExecutor
++
++    init {
++        launcher.setLauncherOverlay(touchProxy)
++        taskFragmentController = TaskFragmentController(
++            launcher,
++            { fragmentInfo ->
++                logTaskFragmentState(fragmentInfo)
++                handleTaskVisibilityChange()
++            },
++            { fragmentInfo ->
++                logTaskFragmentState(fragmentInfo)
++                handleTaskVisibilityChange()
++            },
++            {
++                Log.i(TAG, "onTaskFragmentGone")
++                handleTaskVisibilityChange()
++            },
++            launcher.mainExecutor
++        )
++        taskOverlayController.setScrollHandler(object : TaskOverlayController.InputHandler {
++            override fun onBackPressed(): Boolean {
++                return handleBackFromOverlay()
++            }
++
++            override fun onScrolled(scrollX: Int, scrolling: Boolean) {
++                if (scrolling && scrollX < 0) {
++                    dragTaskFragment(SCREEN_WIDTH + scrollX)
++                } else if (!scrolling) {
++                    Log.d(TAG, "Overlay scroll end $scrollX")
++                    endDragTaskFragment(SCREEN_WIDTH + scrollX)
++                }
++            }
++        })
++    }
++
++    public fun isShown(): Boolean {
++        return taskFragmentController.isFragmentOnTop() && !taskFragmentController.isFragmentEmpty()
++    }
++
++    private fun handleBackFromOverlay(): Boolean {
++        Log.d(TAG, "handleBackFromOverlay ${taskFragmentController.lastActivityRemaining()}")
++        return taskFragmentController.lastActivityRemaining().also {
++            if (it) {
++                mainExecutor.execute {
++                    animateHideTaskFragment(SCREEN_WIDTH, ANIMATE_BACK_DURATION)
++                }
++            }
++        }
++    }
++
++    private fun dragTaskFragment(distancePx: Int) {
++        beforeShowTaskFragment()
++        Log.i(TAG, "dragTaskFragment $distancePx")
++        mainExecutor.execute {
++            offsetTaskFragment(distancePx)
++        }
++    }
++
++    private fun offsetTaskFragment(right: Int) {
++        val rightRounded = right.coerceAtMost(SCREEN_WIDTH).coerceAtLeast(0)
++        taskFragmentController.moveTaskFragment(
++            Rect(rightRounded - SCREEN_WIDTH, 0, rightRounded, SCREEN_HEIGHT)
++        )
++    }
++
++    private fun endDragTaskFragment(endDistancePx: Int) {
++        mainExecutor.execute {
++            if (endDistancePx < SCREEN_WIDTH / 2) {
++                animateHideTaskFragment(endDistancePx)
++            } else {
++                animateShowTaskFragment(endDistancePx)
++            }
++        }
++    }
++
++    private fun animateHideTaskFragment(startX: Int, duration: Long = ANIMATE_HIDE_DURATION) {
++        val animator = ValueAnimator.ofInt(startX, 0)
++            .also {
++                it.duration = duration
++                it.interpolator = AccelerateInterpolator()
++            }
++        animator.addUpdateListener {
++            offsetTaskFragment(it.animatedValue as Int)
++        }
++        animator.addListener(
++            onEnd = {
++                afterHideTaskFragment()
++            }
++        )
++        animator.start()
++    }
++
++    private fun animateShowTaskFragment(startX: Int, duration: Long = ANIMATE_SHOW_DURATION) {
++        val animator = ValueAnimator.ofInt(startX, SCREEN_WIDTH)
++            .also {
++                it.duration = duration
++                it.interpolator = DecelerateInterpolator()
++            }
++        animator.addUpdateListener {
++            offsetTaskFragment(it.animatedValue as Int)
++        }
++        animator.start()
++    }
++
++    private fun startSideActivity() {
++        taskFragmentController.startActivityInTaskFragment(
++            Intent(Intent.ACTION_MAIN).apply {
++                setClassName("io.github.ole.taskfrag.side",
++                    "io.github.ole.taskfrag.side.SideActivity")
++                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
++            }
++        )
++    }
++
++    private fun beforeShowTaskFragment() {
++        if (!taskFragmentController.isFragmentOnTop()) {
++            taskFragmentController.reorderToTop()
++        }
++        if (taskFragmentController.isFragmentEmpty()) {
++            startSideActivity()
++        }
++    }
++
++    private fun afterHideTaskFragment() {
++        taskFragmentController.reorderToBottom()
++    }
++
++    private fun logTaskFragmentState(info: TaskFragmentInfo) {
++        Log.d(TAG, "TaskFragment: vis=${info.isVisible}," +
++                " top=${info.isTopNonFinishingChild}, empty=${info.isEmpty}," +
++                " runCnt=${info.runningActivityCount}")
++    }
++
++    private fun handleTaskVisibilityChange() {
++        val visible = taskFragmentController.isFragmentOnTop() && !taskFragmentController.isFragmentEmpty()
++        taskOverlayController.setInputInterceptable(visible)
++    }
++
++    override fun onAttachedToWindow() {
++        super.onAttachedToWindow()
++        taskOverlayController.start()
++        taskFragmentController.createTaskFragment()
++    }
++
++    override fun onDetachedFromWindow() {
++        taskOverlayController.stop()
++        taskFragmentController.destroy()
++        super.onDetachedFromWindow()
++    }
++
++    override fun openOverlay() {
++        mainExecutor.execute {
++            animateShowTaskFragment(0)
++        }
++    }
++
++    override fun hideOverlay(duration: Int) {
++        mainExecutor.execute {
++            animateHideTaskFragment(SCREEN_WIDTH, duration.toLong())
++        }
++    }
++}
+diff --git a/src/io/github/ole/taskfrag/shared/ITaskHost.aidl b/src/io/github/ole/taskfrag/shared/ITaskHost.aidl
+new file mode 100644
+index 0000000000..ae31b42b7f
+--- /dev/null
++++ b/src/io/github/ole/taskfrag/shared/ITaskHost.aidl
+@@ -0,0 +1,31 @@
++package io.github.ole.taskfrag.shared;
++
++import io.github.ole.taskfrag.shared.ITaskHostCallback;
++
++interface ITaskHost {
++
++    /**
++     * Register a host to the channel
++     * @param host host to register
++     */
++    oneway void registerHostCallback(ITaskHostCallback host);
++
++    /**
++     * Unregister a host from the channel
++     * @param host host to unregister
++     */
++    oneway void unregisterHostCallback(ITaskHostCallback host);
++
++    /**
++     * User pressed back in task overlay
++     * @return true if back is handled by host, false if the original window should handle it
++     */
++    boolean onOverlayBackPressed();
++
++    /**
++     * User scrolls the task overlay out
++     * @param scrollX the x position of the scroll
++     * @param scrolling whether the scrolling is still going on
++     */
++    oneway void onOverlayScrolled(int scrollX, boolean scrolling);
++}
+diff --git a/src/io/github/ole/taskfrag/shared/ITaskHostCallback.aidl b/src/io/github/ole/taskfrag/shared/ITaskHostCallback.aidl
+new file mode 100644
+index 0000000000..e7b858d1a2
+--- /dev/null
++++ b/src/io/github/ole/taskfrag/shared/ITaskHostCallback.aidl
+@@ -0,0 +1,10 @@
++package io.github.ole.taskfrag.shared;
++
++interface ITaskHostCallback {
++
++    /**
++     * Set input interceptable in task
++     * @param enabled send back event and scroll gesture in task to host or not
++     */
++    oneway void setInputInterceptable(boolean enabled);
++}
+diff --git a/src/io/github/ole/taskfrag/shared/ITaskOverlay.aidl b/src/io/github/ole/taskfrag/shared/ITaskOverlay.aidl
+new file mode 100644
+index 0000000000..401ede39da
+--- /dev/null
++++ b/src/io/github/ole/taskfrag/shared/ITaskOverlay.aidl
+@@ -0,0 +1,21 @@
++package io.github.ole.taskfrag.shared;
++
++import io.github.ole.taskfrag.shared.ITaskOverlayCallback;
++
++interface ITaskOverlay {
++    /**
++     * Register an overlay to the host.
++     * @param overlay overlay to register
++     */
++    oneway void registerOverlayCallback(ITaskOverlayCallback overlay);
++    /**
++     * Unregister an overlay from the host.
++     * @param overlay overlay to unregister
++     */
++    oneway void unregisterOverlayCallback(ITaskOverlayCallback overlay);
++
++    /**
++     * Set whether the back event and scroll gesture should be intercepted by the host.
++     */
++    oneway void setInputInterceptable(boolean enabled);
++}
+diff --git a/src/io/github/ole/taskfrag/shared/ITaskOverlayCallback.aidl b/src/io/github/ole/taskfrag/shared/ITaskOverlayCallback.aidl
+new file mode 100644
+index 0000000000..2dd7689389
+--- /dev/null
++++ b/src/io/github/ole/taskfrag/shared/ITaskOverlayCallback.aidl
+@@ -0,0 +1,17 @@
++package io.github.ole.taskfrag.shared;
++
++interface ITaskOverlayCallback {
++
++    /**
++     * User pressed back in task overlay
++     * @return true if back is handled by host, false if the original window should handle it
++     */
++    boolean onOverlayBackPressed();
++
++    /**
++     * User scrolls the task overlay out
++     * @param scrollX the x position of the scroll
++     * @param scrolling whether the scrolling is still going on
++     */
++    oneway void onOverlayScrolled(int scrollX, boolean scrolling);
++}
+diff --git a/src/io/github/ole/taskfrag/shared/TaskHostController.java b/src/io/github/ole/taskfrag/shared/TaskHostController.java
+new file mode 100644
+index 0000000000..9f9c53e349
+--- /dev/null
++++ b/src/io/github/ole/taskfrag/shared/TaskHostController.java
+@@ -0,0 +1,140 @@
++package io.github.ole.taskfrag.shared;
++
++import android.content.ComponentName;
++import android.content.Context;
++import android.content.Intent;
++import android.content.ServiceConnection;
++import android.os.IBinder;
++import android.os.RemoteException;
++import android.util.Log;
++
++import java.util.concurrent.atomic.AtomicInteger;
++
++public class TaskHostController {
++    private static final String TAG = "TaskHostController";
++    private final Context mContext;
++    private final AtomicInteger mConnectionCount = new AtomicInteger(0);
++
++    private boolean mInputInterceptable = false;
++    private boolean mBound;
++    private ITaskHost mTaskHost;
++
++    private final ITaskHostCallback mHostCallback = new ITaskHostCallback.Stub() {
++        @Override
++        public void setInputInterceptable(boolean enabled) {
++            mInputInterceptable = enabled;
++        }
++    };
++
++    private final IBinder.DeathRecipient mDeathRecipient = new IBinder.DeathRecipient() {
++        @Override
++        public void binderDied() {
++            mTaskHost = null;
++        }
++    };
++    private final ServiceConnection mConnection = new ServiceConnection() {
++        @Override
++        public void onServiceConnected(ComponentName name, IBinder service) {
++            mTaskHost = ITaskHost.Stub.asInterface(service);
++            if (mTaskHost == null) {
++                return;
++            }
++            Log.d(TAG, "ITaskHost connected");
++            try {
++                mTaskHost.asBinder().linkToDeath(mDeathRecipient, 0);
++            } catch (RemoteException e) {
++                Log.e(TAG, "Failed to link to death", e);
++            }
++            try {
++                mTaskHost.registerHostCallback(mHostCallback);
++            } catch (RemoteException e) {
++                Log.e(TAG, "Failed to register host", e);
++            }
++        }
++
++        @Override
++        public void onServiceDisconnected(ComponentName name) {
++            if (mTaskHost == null) {
++                return;
++            }
++            Log.d(TAG, "ITaskHost disconnected");
++            try {
++                mTaskHost.unregisterHostCallback(mHostCallback);
++            } catch (RemoteException e) {
++                Log.e(TAG, "Failed to unregister overlay", e);
++            }
++            mTaskHost.asBinder().unlinkToDeath(mDeathRecipient, 0);
++            mTaskHost = null;
++        }
++    };
++
++    private static volatile TaskHostController sInstance;
++    public static TaskHostController get(Context context) {
++        if (sInstance == null) {
++            synchronized (TaskHostController.class) {
++                if (sInstance == null) {
++                    sInstance = new TaskHostController(context);
++                }
++            }
++        }
++        return sInstance;
++    }
++
++    private TaskHostController(Context context) {
++        mContext = context.getApplicationContext();
++    }
++
++    public void start() {
++        mConnectionCount.incrementAndGet();
++        if (mTaskHost != null) {
++            return;
++        }
++        if (mBound) {
++            unbindTaskHost();
++        }
++        bindTaskHost();
++    }
++
++    private void bindTaskHost() {
++        Intent intent = new Intent("io.github.ole.taskfrag.action.GET_HOST");
++        intent.setPackage("com.android.launcher3");
++        mBound = mContext.bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
++    }
++
++    private void unbindTaskHost() {
++        if (!mBound) {
++            return;
++        }
++        mContext.unbindService(mConnection);
++        mBound = false;
++    }
++
++    public boolean onBackPressed() {
++        if (mTaskHost != null && mInputInterceptable) {
++            try {
++                return mTaskHost.onOverlayBackPressed();
++            } catch (RemoteException e) {
++                Log.e(TAG, "Failed to send back", e);
++            }
++        }
++        return false;
++    }
++
++    public void onScrolled(int scrollX, boolean scrolling) {
++        if (mTaskHost != null && mInputInterceptable) {
++            try {
++                mTaskHost.onOverlayScrolled(scrollX, scrolling);
++            } catch (RemoteException e) {
++                Log.e(TAG, "Failed to send scroll", e);
++            }
++        }
++    }
++
++    public void stop() {
++        int count = mConnectionCount.decrementAndGet();
++        if (mTaskHost == null || count > 0) {
++            return;
++        }
++        unbindTaskHost();
++    }
++}
+diff --git a/src/io/github/ole/taskfrag/shared/TaskOverlayController.java b/src/io/github/ole/taskfrag/shared/TaskOverlayController.java
+new file mode 100644
+index 0000000000..0e9e956a70
+--- /dev/null
++++ b/src/io/github/ole/taskfrag/shared/TaskOverlayController.java
+@@ -0,0 +1,161 @@
++package io.github.ole.taskfrag.shared;
++
++import android.content.ComponentName;
++import android.content.Context;
++import android.content.Intent;
++import android.content.ServiceConnection;
++import android.os.IBinder;
++import android.os.RemoteException;
++import android.util.Log;
++
++import java.util.concurrent.atomic.AtomicInteger;
++
++public class TaskOverlayController {
++    public interface InputHandler {
++        /**
++         * Called when the overlay receives back
++         * @return true if back is handled by host, false if the original window should handle it
++         */
++        boolean onBackPressed();
++        /**
++         * Called when the overlay has scrolled.
++         *
++         * @param scrollX The current scrollX of the overlay.
++         * @param scrolling Whether the overlay is currently scrolling.
++         */
++        void onScrolled(int scrollX, boolean scrolling);
++    }
++    private static final String TAG = "TaskOverlayController";
++    private final Context mContext;
++    private final AtomicInteger mConnectionCount = new AtomicInteger(0);
++    private InputHandler mInputHandler;
++
++    private boolean mBound;
++    private boolean mInputInterceptable = false;
++    private ITaskOverlay mTaskOverlay;
++
++    private final ITaskOverlayCallback mOverlayCallback = new ITaskOverlayCallback.Stub() {
++        @Override
++        public boolean onOverlayBackPressed() {
++            return mInputHandler != null && mInputHandler.onBackPressed();
++        }
++
++        @Override
++        public void onOverlayScrolled(int scrollX, boolean scrolling) {
++            if (mInputHandler != null) {
++                mInputHandler.onScrolled(scrollX, scrolling);
++            }
++        }
++    };
++
++    private final IBinder.DeathRecipient mDeathRecipient = new IBinder.DeathRecipient() {
++        @Override
++        public void binderDied() {
++            mTaskOverlay = null;
++        }
++    };
++    private final ServiceConnection mConnection = new ServiceConnection() {
++        @Override
++        public void onServiceConnected(ComponentName name, IBinder service) {
++            mTaskOverlay = ITaskOverlay.Stub.asInterface(service);
++            if (mTaskOverlay == null) {
++                return;
++            }
++            Log.d(TAG, "ITaskOverlay connected");
++            try {
++                mTaskOverlay.asBinder().linkToDeath(mDeathRecipient, 0);
++            } catch (RemoteException e) {
++                Log.e(TAG, "Failed to link to death", e);
++                return;
++            }
++            try {
++                mTaskOverlay.registerOverlayCallback(mOverlayCallback);
++            } catch (RemoteException e) {
++                Log.e(TAG, "Failed to register overlay", e);
++            }
++        }
++
++        @Override
++        public void onServiceDisconnected(ComponentName name) {
++            if (mTaskOverlay == null) {
++                return;
++            }
++            Log.d(TAG, "ITaskOverlay disconnected");
++            try {
++                mTaskOverlay.unregisterOverlayCallback(mOverlayCallback);
++            } catch (RemoteException e) {
++                Log.e(TAG, "Failed to unregister overlay", e);
++            }
++            mTaskOverlay.asBinder().unlinkToDeath(mDeathRecipient, 0);
++            mTaskOverlay = null;
++        }
++    };
++
++    private static volatile TaskOverlayController sInstance;
++    public static TaskOverlayController get(Context context) {
++        if (sInstance == null) {
++            synchronized (TaskOverlayController.class) {
++                if (sInstance == null) {
++                    sInstance = new TaskOverlayController(context);
++                }
++            }
++        }
++        return sInstance;
++    }
++
++    private TaskOverlayController(Context context) {
++        mContext = context.getApplicationContext();
++    }
++
++    public void start() {
++        mConnectionCount.incrementAndGet();
++        if (mTaskOverlay != null) {
++            return;
++        }
++        if (mBound) {
++            unbindTaskOverlay();
++        }
++        bindTaskOverlay();
++    }
++
++    private void bindTaskOverlay() {
++        Intent intent = new Intent("io.github.ole.taskfrag.action.GET_OVERLAY");
++        intent.setPackage("com.android.launcher3");
++        mBound = mContext.bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
++    }
++
++    private void unbindTaskOverlay() {
++        if (!mBound) {
++            return;
++        }
++        mContext.unbindService(mConnection);
++        mBound = false;
++    }
++
++    public void setScrollHandler(InputHandler handler) {
++        mInputHandler = handler;
++    }
++
++    public void setInputInterceptable(boolean enabled) {
++        if (mInputInterceptable == enabled) {
++            return;
++        }
++        mInputInterceptable = enabled;
++        if (mTaskOverlay == null) {
++            return;
++        }
++        try {
++            mTaskOverlay.setInputInterceptable(enabled);
++        } catch (RemoteException e) {
++            Log.e(TAG, "Failed to set back interceptable", e);
++        }
++    }
++
++    public void stop() {
++        int count = mConnectionCount.decrementAndGet();
++        if (mTaskOverlay == null || count > 0) {
++            return;
++        }
++        unbindTaskOverlay();
++    }
++}
+-- 
+2.43.0
+

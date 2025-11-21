@@ -97,7 +97,7 @@ public class TaskHostController {
 
     private void bindTaskHost() {
         Intent intent = new Intent("io.github.ole.taskfrag.action.GET_HOST");
-        intent.setPackage("io.github.ole.taskfrag");
+        intent.setPackage("com.android.launcher3");
         mBound = mContext.bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
     }
 
